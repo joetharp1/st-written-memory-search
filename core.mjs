@@ -5,6 +5,31 @@ export function words(s) {
         .filter(w => !stop.has(w)).map(w => w.length > 7 && w.endsWith('ing') ? w.slice(0,-3) : w.length > 4 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0,-1) : w);
 }
 function hash(s) { let h=2166136261; for (let i=0;i<s.length;i++) h=Math.imul(h^s.charCodeAt(i),16777619); return (h>>>0).toString(16); }
+export const sourcePrefix = url => `memory-${hash(url)}-`;
+export function journalInfo(source) {
+    const match = /^\/user\/files\/(ava-log-(\d{4}-\d{2}-\d{2})(?:-(\d+))?\.md)$/.exec(source?.url || '');
+    if (!match || source.name !== match[1]) return null;
+    const date = new Date(`${match[2]}T00:00:00Z`), sequence = Number(match[3] || 1);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== match[2] || !Number.isSafeInteger(sequence) || sequence < 1) return null;
+    return { date: match[2], sequence };
+}
+export function parseJournal(source, text, avatar) {
+    const info = journalInfo(source);
+    const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(text);
+    if (!info || !match || text.includes('\0')) throw Error('Invalid journal file.');
+    const meta = {};
+    for (const line of match[1].split(/\r?\n/)) {
+        const field = /^(date|title|avatar|written_at): (.*)$/.exec(line);
+        if (!field) continue;
+        if (Object.hasOwn(meta,field[1])) throw Error('Duplicate journal metadata.');
+        meta[field[1]] = field[1] === 'date' ? field[2] : JSON.parse(field[2]);
+    }
+    if (meta.avatar !== avatar) throw Error('Journal belongs to a different character; excluded.');
+    if (meta.date !== info.date || typeof meta.title !== 'string' || !meta.title.trim() || !match[2].trim()) throw Error('Incomplete journal metadata or body.');
+    return [{ id: `${sourcePrefix(source.url)}0-${hash(text)}`, source: source.name, sourceKey: source.url,
+        kind: 'journal', label: `Journal ${meta.date}`, date: meta.date, title: meta.title, text: match[2],
+        warnings: [], sourceMetadata: ['Saved journal entry; original wording retained.'], index: 0 }];
+}
 export function parseFile(source, text) {
     if (text.startsWith('%PDF-') || text.includes('\0')) throw Error('Binary file: attach a text-extracted copy.');
     const blocks=text.split('</memory>').filter(s=>s.trim()); const entries=[]; const groups=new Map();
@@ -37,14 +62,14 @@ export function parseFile(source, text) {
 }
 export function rank(entries, query, limit=5) {
     const terms=[...new Set(words(query))];if(!terms.length)return [];
-    const docs=entries.map(e=>({entry:e,tokens:words(e.text)}));
+    const docs=entries.map(e=>{const searchable=e.kind==='journal'?`${e.title}\n${e.date}\n${e.text}`:e.text;return {entry:e,searchable,tokens:words(searchable)};});
     const avg=docs.reduce((n,d)=>n+d.tokens.length,0)/Math.max(1,docs.length)||1;
     const df=new Map(terms.map(t=>[t,docs.filter(d=>d.tokens.includes(t)).length]));
     const phrase=query.trim().replace(/^["“]|["”]$/g,'').toLowerCase();
     return docs.map(d=>{
         let score=0,matched=[];
         for(const t of terms){const tf=d.tokens.filter(w=>w===t).length;if(!tf)continue;matched.push(t);const idf=Math.log(1+(docs.length-df.get(t)+.5)/(df.get(t)+.5));score+=idf*tf*2.2/(tf+1.2*(.25+.75*d.tokens.length/avg));}
-        if(phrase.length>=4&&d.entry.text.toLowerCase().includes(phrase))score+=12;
+        if(phrase.length>=4&&d.searchable.toLowerCase().includes(phrase))score+=12;
         return {...d.entry,score,matched};
     }).filter(d=>d.score>0).sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,limit);
 }

@@ -1,6 +1,6 @@
-# Written Memory Search 0.1.0
+# Written Memory Search 0.1.1
 
-A read-only SillyTavern extension that gives a character tools for searching enabled written Data Bank attachments. It supplements existing vector retrieval. No embedding model, server restart, API key, card edits, or external search service is required.
+A read-only SillyTavern extension that gives a character tools for searching enabled written Data Bank attachments and an optional private journal archive. It supplements existing vector retrieval. No embedding model, server restart, API key, card edits, or external search service is required.
 
 ## Installation
 
@@ -12,11 +12,11 @@ Leave existing Data Bank files and vector settings in place. Disabling this exte
 
 ## Files and privacy
 
-Reads enabled current-character and current-chat attachments only by default. Shared/global attachments require a separate per-character opt-in. Disabled files and other characters' private attachment lists are excluded. Group chats are unsupported. Visibility and chat identity are checked again after reads.
+Reads enabled current-character and current-chat attachments only by default. Shared/global attachments require a separate per-character opt-in. Disabled files and other characters' private attachment lists are excluded, with the explicit journal-only exception below. Group chats are unsupported. Visibility and chat identity are checked again after reads.
 
 Source files are fetched from the same SillyTavern server with cache disabled for fresh reads. File updates are used on the next search; there is no separate persistent index or copied memory database. Returned excerpts become ordinary tool results in the current conversation and are sent to its configured chat provider, just like other supplied chat context. No additional vendor receives the files.
 
-Markdown/plain text and text already extracted by SillyTavern are supported. Images/audio/video are skipped. A raw binary PDF is reported as unreadable; the extension does not run OCR or PDF conversion. Limits are 30 eligible files, 2 MB per file, and 4 million decoded characters across a search; skipped/unreadable files are reported. There is a 15-second timeout per file read.
+Markdown/plain text and text already extracted by SillyTavern are supported. Images/audio/video are skipped. A raw binary PDF is reported as unreadable; the extension does not run OCR or PDF conversion. Limits are 30 eligible ordinary files plus up to 60 opted-in journal entries per archive page, 2 MB per file, and 4 million decoded characters across a search; skipped/unreadable files are reported. There is a 15-second timeout per file read.
 
 ## Retrieval and source integrity
 
@@ -43,3 +43,17 @@ Run `npm test` with a recent Node version. No npm dependencies are needed. Priva
 5. Disable a test attachment and confirm it disappears from searches. Update a test file and confirm a new search reads it.
 
 Do not describe this extension as installed or live-tested until those checks have been performed on the user's instance.
+
+## 0.1.1 — on-demand Ava Journal archive
+
+Update **Written Memory Search**, reload and open Ava’s chat. Enable it for Ava and tick **Search this character’s journal archive on demand**. Leave **Also search shared Data Bank files** off unless deliberately sharing those files. Test with a distinctive phrase or title from a saved entry. No journal update, file copying or Data Bank re-enabling is needed.
+
+The per-character journal switch defaults off. It permits reads of registered `ava-log-YYYY-MM-DD[-N].md` files in the current character’s own attachment list, including entries disabled for vector retrieval. The extension verifies their generated frontmatter date and avatar before returning content. It does not enable attachments, change vector settings, read other characters’ attachment lists, edit cards, edit journal instructions or change CharMemory. Enabled ordinary attachments keep their existing behavior. Other disabled files are excluded.
+
+Dates and titles are taken from the saved journal metadata; the original body is returned verbatim. New entries become available on the next search after journal registration. The existing journal reminder remains independent. No journal body is automatically injected by this extension: only selected search/open results enter the conversation when the model calls its tools. Search is keyword-based, not a guarantee that the model will recall or search for every event.
+
+Journal searches cover 60 files per page, newest date first and numbered entries sorted numerically. The response reports totalFiles and nextJournalPage. SearchWrittenMemories accepts optional `journal_page` so every older page remains reachable. Search a date/title or specific phrase; when needed the model can repeat the query with nextJournalPage. Ordinary files are searched alongside each page. OpenWrittenMemory locates a result’s source directly, even from an older page, and freshly checks source visibility and content. Changed files invalidate old result IDs. Removing a source or disabling journal search blocks future opens. Already returned tool messages follow normal ST chat history behavior.
+
+To disable archive access, untick the journal option. Keep Data Bank’s journal retrieval disabled to retain small normal prompts. The journal extension and its schedule, files, Telegram notices, read-back and fixed content require no changes.
+
+Validation for 0.1.1: 21 automated checks passed, including actual index.js host wiring in a mocked ST environment, per-character UI opt-in, disabled-file exclusion, avatar verification, date/title/body preservation, new/changed/removed entries, permission changes during reads, all archive pages and direct opening of older results. Verified ST 1.19.0 source exposes includeDisabled as a read filter; journal registration still sets the disabled retrieval flag. The Chromium mobile harness is supplied, but could not run in this workspace because the browser's socket launch was blocked. No live provider call or Joe's private journal content was used. Live acceptance: update/reload, enable Ava plus journal search, and test a known phrase from one of her entries.
